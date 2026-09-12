@@ -255,8 +255,6 @@ For GitHub, use `.env.example` instead:
 GEMINI_API_KEY=
 ```
 
-Never commit the actual `.env` file or API keys to the repository.
-
 ## Core Components
 
 ### Token Analyzer
