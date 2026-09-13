@@ -21,7 +21,7 @@
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.10+(MUST BE 3.14<)
 - Bun
 - Git
 - Gemini API Key
@@ -42,7 +42,7 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Create a `.env` file inside the `backend` directory:
+Create a `.env` file inside the `backend` directory: copy .env.example .env
 
 ```env
 GEMINI_API_KEY=your_gemini_api_key
