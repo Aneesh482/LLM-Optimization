@@ -24,6 +24,7 @@ class RequestLog(Base):
     input_tokens = Column(Integer, nullable=True)
     output_tokens = Column(Integer, nullable=True)
     total_tokens = Column(Integer, nullable=True)
+    tokens_saved = Column(Integer, nullable=False, default=0)
     latency_ms = Column(Float, nullable=True)
     status = Column(String(16), nullable=False, default="success")  # success | error
     error_message = Column(Text, nullable=True)

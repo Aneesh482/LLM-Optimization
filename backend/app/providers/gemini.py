@@ -37,7 +37,6 @@ class GeminiProvider(LLMProvider):
         messages: list[dict],
         model: str,
         temperature: Optional[float] = None,
-        max_output_tokens: Optional[int] = None,
         cached_content: Optional[str] = None,
     ) -> LLMResponse:
         """Send a request to Gemini and return a normalised LLMResponse."""
@@ -48,7 +47,7 @@ class GeminiProvider(LLMProvider):
         system_instruction, contents = self._prepare_contents(messages)
 
         # Build generation config with optional provider-side cached content.
-        gen_config = self._build_gen_config(temperature, max_output_tokens, cached_content)
+        gen_config = self._build_gen_config(temperature, cached_content)
 
         logger.info(
             "Gemini request → model=%s messages=%d cached_content=%s",
@@ -65,6 +64,41 @@ class GeminiProvider(LLMProvider):
         )
 
         return self._parse_response(response, model_id)
+
+    async def count_tokens(
+        self,
+        *,
+        messages: list[dict],
+        model: str,
+    ) -> int:
+        """Count tokens for messages using Gemini's official count_tokens API.
+
+        Returns the exact token count that Gemini would use for these messages.
+        """
+        model_id = model or settings.default_model
+        system_instruction, contents = self._prepare_contents(messages)
+
+        try:
+            # Use Gemini's official token counting
+            count_result = await self._client.aio.models.count_tokens(
+                model=model_id,
+                contents=contents,
+                system_instruction=system_instruction,
+            )
+
+            # The result has a total_tokens attribute
+            token_count = getattr(count_result, 'total_tokens', 0)
+
+            logger.debug(
+                "Gemini count_tokens → model=%s tokens=%d",
+                model_id,
+                token_count,
+            )
+
+            return token_count
+        except Exception as exc:
+            logger.error(f"Failed to count tokens with Gemini API: {exc}")
+            raise
 
     async def list_models(self) -> list[str]:
         """Return available Gemini model ids."""
@@ -190,15 +224,12 @@ class GeminiProvider(LLMProvider):
     @staticmethod
     def _build_gen_config(
         temperature: Optional[float],
-        max_output_tokens: Optional[int],
         cached_content: Optional[str] = None,
     ) -> types.GenerateContentConfig:
         """Build a Gemini GenerateContentConfig with optional cached content."""
         kwargs: dict = {}
         if temperature is not None:
             kwargs["temperature"] = temperature
-        if max_output_tokens is not None:
-            kwargs["max_output_tokens"] = max_output_tokens
         if cached_content:
             kwargs["cached_content"] = cached_content
         return types.GenerateContentConfig(**kwargs)

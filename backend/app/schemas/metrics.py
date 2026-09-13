@@ -63,11 +63,13 @@ class DashboardMetricsResponse(BaseModel):
     total_input_tokens: int
     total_output_tokens: int
     total_tokens: int
-    total_tokens_saved: int
+    estimated_prompt_tokens_saved: int
+    ccr_compression_savings: int
+    ccr_contexts_stored: int
     avg_latency_ms: float
     avg_compression_ratio: float
     estimated_cost_usd: float
-    estimated_cost_saved_usd: float
+    estimated_prompt_cost_saved_usd: float
     models_usage: list[ModelUsageMetric]
     content_types_breakdown: list[ContentTypeMetric]
     time_series: list[TimeSeriesDataPoint]

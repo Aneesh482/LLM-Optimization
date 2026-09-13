@@ -78,9 +78,8 @@ export function Playground() {
   const [inputText, setInputText] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("You are an expert AI assistant.");
   const [selectedModel, setSelectedModel] = useState("gemini-3.6-flash");
-  const [temperature, setTemperature] = useState(0.7);
-  const [maxTokens, setMaxTokens] = useState(1000);
   const [optimizeContext, setOptimizeContext] = useState(true);
+  const [conversationMode, setConversationMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -102,22 +101,31 @@ export function Playground() {
     setIsLoading(true);
 
     try {
-      // Build request messages (including system prompt if provided)
+      // Build request messages
       const apiMessages: ChatMessage[] = [];
+
+      // Always include system prompt if provided
       if (systemPrompt.trim()) {
         apiMessages.push({ role: "system", content: systemPrompt.trim() });
       }
-      for (const m of updatedMessages) {
-        if (m.role === "user" || m.role === "assistant") {
-          apiMessages.push({ role: m.role, content: m.content });
+
+      // Conversation Mode: Include history vs Single-Shot Mode: Only current message
+      if (conversationMode) {
+        // Include all conversation history
+        for (const m of updatedMessages) {
+          if (m.role === "user" || m.role === "assistant") {
+            apiMessages.push({ role: m.role, content: m.content });
+          }
         }
+      } else {
+        // Single-shot mode: Only send the current user message
+        // This prevents irrelevant history from inflating input tokens
+        apiMessages.push({ role: "user", content: userMessage.content });
       }
 
       const res: ChatCompletionResponse = await api.sendChatCompletion({
         model: selectedModel,
         messages: apiMessages,
-        temperature,
-        max_output_tokens: maxTokens,
         optimize_context: optimizeContext,
       });
 
@@ -191,18 +199,33 @@ export function Playground() {
               ))}
             </div>
 
-            {/* Prominent Optimize Context Toggle Button */}
-            <button
-              onClick={() => setOptimizeContext(!optimizeContext)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold border transition-all ${
-                optimizeContext
-                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25"
-                  : "bg-muted text-muted-foreground border-border hover:text-foreground"
-              }`}
-            >
-              <Zap className={`h-3.5 w-3.5 ${optimizeContext ? "text-emerald-400 fill-emerald-400/30" : ""}`} />
-              <span>Optimize Context: {optimizeContext ? "ON" : "OFF"}</span>
-            </button>
+            {/* Mode Toggles */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setConversationMode(!conversationMode)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold border transition-all ${
+                  conversationMode
+                    ? "bg-blue-500/15 text-blue-400 border-blue-500/30 hover:bg-blue-500/25"
+                    : "bg-muted text-muted-foreground border-border hover:text-foreground"
+                }`}
+                title={conversationMode ? "Sends full conversation history" : "Sends only current message (default)"}
+              >
+                <Layers className={`h-3.5 w-3.5 ${conversationMode ? "text-blue-400" : ""}`} />
+                <span>History: {conversationMode ? "ON" : "OFF"}</span>
+              </button>
+
+              <button
+                onClick={() => setOptimizeContext(!optimizeContext)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold border transition-all ${
+                  optimizeContext
+                    ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25"
+                    : "bg-muted text-muted-foreground border-border hover:text-foreground"
+                }`}
+              >
+                <Zap className={`h-3.5 w-3.5 ${optimizeContext ? "text-emerald-400 fill-emerald-400/30" : ""}`} />
+                <span>Optimize: {optimizeContext ? "ON" : "OFF"}</span>
+              </button>
+            </div>
           </div>
 
           {/* Messages Container */}
@@ -274,12 +297,32 @@ export function Playground() {
                               </button>
                             </div>
 
-                            {m.metadata.optimization && (m.metadata.optimization.tokens_saved || 0) > 0 && (
-                              <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 w-fit">
-                                <Zap className="h-3 w-3 shrink-0" />
-                                <span>
-                                  Optimization saved <strong>{m.metadata.optimization.tokens_saved} prompt tokens</strong> ({m.metadata.optimization.original_tokens} → {m.metadata.optimization.optimized_tokens})
-                                </span>
+                            {/* Optimization metrics display - always show if optimize_context was enabled */}
+                            {m.metadata.optimization && (
+                              <div className="flex flex-col gap-1 text-[10px] bg-muted/20 px-2 py-1.5 rounded border border-border w-fit">
+                                <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                                  <Layers className="h-3 w-3 shrink-0" />
+                                  <span>Context Optimization (Real Gemini Tokens)</span>
+                                </div>
+                                <div className="flex flex-col gap-0.5 text-muted-foreground">
+                                  <span>
+                                    Original Gemini Tokens: <strong className="text-foreground">{m.metadata.optimization.original_tokens || 0}</strong>
+                                  </span>
+                                  <span>
+                                    Optimized Gemini Tokens: <strong className="text-foreground">{m.metadata.optimization.optimized_tokens || 0}</strong>
+                                  </span>
+                                  <span>
+                                    Tokens Saved: <strong className={`${(m.metadata.optimization.tokens_saved || 0) > 0 ? 'text-emerald-400' : 'text-foreground'}`}>{m.metadata.optimization.tokens_saved || 0}</strong>
+                                  </span>
+                                  {m.metadata.optimization.strategy && (
+                                    <span>
+                                      Strategy: <strong className="text-foreground">{m.metadata.optimization.strategy}</strong>
+                                    </span>
+                                  )}
+                                </div>
+                                {(m.metadata.optimization.tokens_saved || 0) === 0 && (
+                                  <span className="text-muted-foreground italic">No reduction needed</span>
+                                )}
                               </div>
                             )}
                           </div>
@@ -370,29 +413,6 @@ export function Playground() {
                 </select>
               </div>
 
-              {/* Optimization Toggle Box */}
-              <div
-                onClick={() => setOptimizeContext(!optimizeContext)}
-                className={`p-3 rounded border transition-colors cursor-pointer space-y-1.5 ${
-                  optimizeContext
-                    ? "bg-emerald-500/10 border-emerald-500/30"
-                    : "bg-muted/20 border-border hover:bg-muted/30"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-foreground flex items-center gap-1.5">
-                    <Zap className={`h-3.5 w-3.5 ${optimizeContext ? "text-emerald-400" : "text-muted-foreground"}`} />
-                    <span>Optimize Context</span>
-                  </span>
-                  <Badge variant={optimizeContext ? "success" : "outline"}>
-                    {optimizeContext ? "ENABLED" : "DISABLED"}
-                  </Badge>
-                </div>
-                <p className="text-muted-foreground text-[11px] leading-relaxed">
-                  Automatically compresses large JSON/Code/Logs in your prompt and archives older conversation context to SQLite.
-                </p>
-              </div>
-
               {/* System Prompt */}
               <div>
                 <label className="block font-medium text-foreground mb-1">System Instructions</label>
@@ -404,40 +424,6 @@ export function Playground() {
                   className="w-full font-mono text-xs rounded border border-border bg-background p-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none"
                 />
               </div>
-
-              {/* Temperature */}
-              <div>
-                <div className="flex justify-between font-medium text-foreground mb-1">
-                  <span>Temperature</span>
-                  <span className="font-mono text-muted-foreground">{temperature}</span>
-                </div>
-                <input
-                  type="range"
-                  min={0.0}
-                  max={1.0}
-                  step={0.1}
-                  value={temperature}
-                  onChange={(e) => setTemperature(Number(e.target.value))}
-                  className="w-full accent-primary"
-                />
-              </div>
-
-              {/* Max Output Tokens */}
-              <div>
-                <div className="flex justify-between font-medium text-foreground mb-1">
-                  <span>Max Tokens</span>
-                  <span className="font-mono text-muted-foreground">{maxTokens}</span>
-                </div>
-                <input
-                  type="range"
-                  min={200}
-                  max={4000}
-                  step={100}
-                  value={maxTokens}
-                  onChange={(e) => setMaxTokens(Number(e.target.value))}
-                  className="w-full accent-primary"
-                />
-              </div>
             </CardContent>
           </Card>
 
@@ -445,18 +431,18 @@ export function Playground() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                How It Works
+                Real Token Counting
               </CardTitle>
             </CardHeader>
             <CardContent className="text-xs text-muted-foreground space-y-2">
               <p>
-                1. Your prompt is analyzed for bulky content structures (JSON tables, repetitive logs, code AST).
+                <strong className="text-foreground">Conversation Mode OFF (Default):</strong> Only sends your current message. Previous chat history stays in the UI but doesn't count toward input tokens.
               </p>
               <p>
-                2. Large content is compressed or archived in SQLite.
+                <strong className="text-foreground">Optimization:</strong> Uses official Gemini count_tokens API to measure REAL token savings, not estimates.
               </p>
               <p>
-                3. The optimized request is sent to Gemini, and all telemetry is recorded in your dashboard.
+                <strong className="text-foreground">Token Counts:</strong> All displayed token counts and savings are actual Gemini measurements.
               </p>
             </CardContent>
           </Card>

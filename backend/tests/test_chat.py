@@ -26,7 +26,6 @@ async def test_chat_completion_success(client, mock_gemini_response):
                 "model": "gemini-3.6-flash",
                 "messages": [{"role": "user", "content": "Explain recursion."}],
                 "temperature": 0.7,
-                "max_output_tokens": 1000,
             },
         )
 

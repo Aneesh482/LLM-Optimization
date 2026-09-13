@@ -44,7 +44,6 @@ class LLMProvider(abc.ABC):
         messages: list[dict],
         model: str,
         temperature: Optional[float] = None,
-        max_output_tokens: Optional[int] = None,
         cached_content: Optional[str] = None,
     ) -> LLMResponse:
         """Send messages to the LLM and return a normalised response."""

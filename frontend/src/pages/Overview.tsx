@@ -63,10 +63,10 @@ export function Overview() {
     return () => clearInterval(interval);
   }, []);
 
-  const totalTokensSaved = metrics?.total_tokens_saved || 0;
+  const estimatedPromptTokensSaved = metrics?.estimated_prompt_tokens_saved || 0;
   const totalTokensUsed = metrics?.total_tokens || 0;
-  const grossTokens = totalTokensUsed + totalTokensSaved;
-  const savingsPct = grossTokens > 0 ? totalTokensSaved / grossTokens : 0;
+  const grossTokens = totalTokensUsed + estimatedPromptTokensSaved;
+  const savingsPct = grossTokens > 0 ? estimatedPromptTokensSaved / grossTokens : 0;
 
   return (
     <div className="space-y-6">
@@ -102,9 +102,9 @@ export function Overview() {
           icon={<Activity className="h-4 w-4" />}
         />
         <StatCard
-          title="Tokens Saved"
-          value={formatNumber(totalTokensSaved)}
-          subtitle={`${formatPercentage(savingsPct)} total reduction`}
+          title="Real Gemini Prompt Tokens Saved"
+          value={formatNumber(estimatedPromptTokensSaved)}
+          subtitle={`${formatPercentage(savingsPct)} prompt reduction`}
           trend={{ value: formatPercentage(savingsPct), isPositive: true }}
           icon={<TrendingDown className="h-4 w-4 text-emerald-400" />}
         />
@@ -115,8 +115,8 @@ export function Overview() {
           icon={<Clock className="h-4 w-4" />}
         />
         <StatCard
-          title="Estimated Cost Saved"
-          value={formatCurrency(metrics?.estimated_cost_saved_usd || 0)}
+          title="Gemini Prompt Cost Saved"
+          value={formatCurrency(metrics?.estimated_prompt_cost_saved_usd || 0)}
           subtitle={`Current usage: ${formatCurrency(metrics?.estimated_cost_usd || 0)}`}
           icon={<DollarSign className="h-4 w-4 text-emerald-400" />}
         />

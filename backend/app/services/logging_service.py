@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.request_log import RequestLog
 from app.models.context import ContextRecord
+from app.config import MODEL_PRICING
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ async def log_request(
     input_tokens: int | None = None,
     output_tokens: int | None = None,
     total_tokens: int | None = None,
+    tokens_saved: int = 0,
     latency_ms: float | None = None,
     status: str = "success",
     error_message: str | None = None,
@@ -33,6 +35,7 @@ async def log_request(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         total_tokens=total_tokens,
+        tokens_saved=tokens_saved,
         latency_ms=latency_ms,
         status=status,
         error_message=error_message,
@@ -105,22 +108,52 @@ async def get_dashboard_metrics(session: AsyncSession) -> dict[str, Any]:
     total_tokens = int(tot_tokens or 0)
     avg_latency = float(avg_lat or 0.0)
 
-    # 3. Context & Compression Savings
+    # 3. Request-level Estimated Prompt Savings (from optimization)
+    request_savings_stmt = select(
+        func.sum(RequestLog.tokens_saved)
+    ).where(RequestLog.status == "success")
+    request_savings_res = await session.execute(request_savings_stmt)
+    estimated_prompt_tokens_saved = int(request_savings_res.scalar_one() or 0)
+
+    # 4. CCR Compression Savings (storage compression, NOT automatic API savings)
     ccr_stats_stmt = select(
         func.count(ContextRecord.id),
         func.sum(ContextRecord.estimated_tokens_saved),
         func.avg(ContextRecord.compression_ratio),
     )
     ccr_stats = await session.execute(ccr_stats_stmt)
-    total_ctx, tokens_saved, avg_ratio = ccr_stats.one()
-    total_tokens_saved = int(tokens_saved or 0)
+    total_ctx, ccr_compression_savings, avg_ratio = ccr_stats.one()
+    ccr_compression_savings = int(ccr_compression_savings or 0)
     avg_compression_ratio = float(avg_ratio or 1.0) if total_ctx else 1.0
 
-    # 4. Pricing Estimates (Standard Gemini Flash Tier: ~$0.075 / 1M input, ~$0.30 / 1M output)
-    est_cost = (total_input * 0.075 / 1_000_000.0) + (total_output * 0.30 / 1_000_000.0)
-    est_cost_saved = total_tokens_saved * 0.075 / 1_000_000.0
+    # 5. Model-specific pricing calculation
+    # Get all successful requests with their models and tokens
+    model_pricing_stmt = select(
+        RequestLog.model,
+        func.sum(RequestLog.input_tokens),
+        func.sum(RequestLog.output_tokens),
+    ).where(RequestLog.status == "success").group_by(RequestLog.model)
 
-    # 5. Model Breakdown
+    pricing_res = await session.execute(model_pricing_stmt)
+    est_cost = 0.0
+    for row in pricing_res.all():
+        model_name, model_input, model_output = row
+        model_input = int(model_input or 0)
+        model_output = int(model_output or 0)
+
+        # Get pricing for this model or use default
+        pricing = MODEL_PRICING.get(model_name, MODEL_PRICING["default"])
+        model_cost = (
+            (model_input * pricing["input_per_million"] / 1_000_000.0) +
+            (model_output * pricing["output_per_million"] / 1_000_000.0)
+        )
+        est_cost += model_cost
+
+    # Estimate cost saved from prompt optimization (using default input pricing as conservative estimate)
+    default_pricing = MODEL_PRICING["default"]
+    est_prompt_cost_saved = estimated_prompt_tokens_saved * default_pricing["input_per_million"] / 1_000_000.0
+
+    # 6. Model Breakdown
     model_stats_stmt = (
         select(
             RequestLog.model,
@@ -142,7 +175,7 @@ async def get_dashboard_metrics(session: AsyncSession) -> dict[str, Any]:
         for row in model_res.all()
     ]
 
-    # 6. Content Types Breakdown (from CCR Context Records)
+    # 7. Content Types Breakdown (from CCR Context Records)
     content_stats_stmt = (
         select(
             ContextRecord.content_type,
@@ -168,7 +201,7 @@ async def get_dashboard_metrics(session: AsyncSession) -> dict[str, Any]:
         for row in content_res.all()
     ]
 
-    # 7. Recent Request Time Series (last 20 requests bucketed or sequence)
+    # 8. Recent Request Time Series (last 30 requests bucketed or sequence)
     recent_stmt = (
         select(RequestLog)
         .order_by(desc(RequestLog.timestamp))
@@ -185,7 +218,7 @@ async def get_dashboard_metrics(session: AsyncSession) -> dict[str, Any]:
             "requests": 1,
             "input_tokens": log.input_tokens or 0,
             "output_tokens": log.output_tokens or 0,
-            "tokens_saved": 0,
+            "tokens_saved": log.tokens_saved or 0,
             "avg_latency_ms": round(log.latency_ms or 0.0, 2),
         })
 
@@ -196,11 +229,13 @@ async def get_dashboard_metrics(session: AsyncSession) -> dict[str, Any]:
         "total_input_tokens": total_input,
         "total_output_tokens": total_output,
         "total_tokens": total_tokens,
-        "total_tokens_saved": total_tokens_saved,
+        "estimated_prompt_tokens_saved": estimated_prompt_tokens_saved,
+        "ccr_compression_savings": ccr_compression_savings,
+        "ccr_contexts_stored": total_ctx or 0,
         "avg_latency_ms": round(avg_latency, 2),
         "avg_compression_ratio": round(avg_compression_ratio, 4),
         "estimated_cost_usd": round(est_cost, 6),
-        "estimated_cost_saved_usd": round(est_cost_saved, 6),
+        "estimated_prompt_cost_saved_usd": round(est_prompt_cost_saved, 6),
         "models_usage": models_usage,
         "content_types_breakdown": content_types_breakdown,
         "time_series": time_series,

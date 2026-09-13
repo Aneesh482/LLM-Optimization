@@ -1,4 +1,5 @@
 import json
+import re
 import time
 import uuid
 import logging
@@ -85,6 +86,55 @@ def _get_provider() -> GeminiProvider:
     return _provider
 
 
+async def _resolve_ccr_references(
+    messages: list[dict[str, str]],
+    db: AsyncSession,
+) -> list[dict[str, str]]:
+    """
+    Resolve any [CCR:ctx_xxx] references in messages by retrieving original content.
+
+    The gateway, not Gemini, performs retrieval. This is a simple keyword-matching
+    approach - only retrieves when an explicit CCR reference is found.
+    """
+    ccr_pattern = re.compile(r'\[CCR:(ctx_[a-f0-9]{12})\]')
+    resolved_messages = []
+
+    for msg in messages:
+        content = msg.get("content", "")
+
+        # Find all CCR references in this message
+        matches = ccr_pattern.findall(content)
+
+        if matches:
+            # Retrieve each referenced context
+            resolved_content = content
+            for context_id in matches:
+                try:
+                    record = await ccr_service.retrieve_original(db, context_id)
+                    if record and record.original_content:
+                        # Replace the CCR reference with the original content
+                        resolved_content = resolved_content.replace(
+                            f"[CCR:{context_id}]",
+                            f"\n[Retrieved Context {context_id}]\n{record.original_content}\n[End Retrieved Context]\n"
+                        )
+                        logger.info(f"Resolved CCR reference: {context_id}")
+                    else:
+                        logger.warning(f"CCR reference not found: {context_id}")
+                        # Leave the reference as-is if not found
+                except Exception as exc:
+                    logger.error(f"Failed to retrieve CCR {context_id}: {exc}")
+                    # Leave the reference as-is on error
+
+            resolved_messages.append({
+                "role": msg.get("role", "user"),
+                "content": resolved_content
+            })
+        else:
+            resolved_messages.append(msg)
+
+    return resolved_messages
+
+
 # ── Health ───────────────────────────────────────────────────────────
 
 @router.get("/health", response_model=HealthResponse, tags=["Health"], summary="Gateway health check")
@@ -115,20 +165,58 @@ async def chat_completions(
         messages = [m.model_dump() for m in request.messages]
 
         opt_metrics = None
+        original_gemini_tokens = None
+        optimized_gemini_tokens = None
+
         # Automatic Context Management if requested
         if request.optimize_context:
+            # Get REAL Gemini token count for original messages
+            try:
+                original_gemini_tokens = await provider.count_tokens(
+                    messages=messages,
+                    model=request.model,
+                )
+                logger.info(f"Original Gemini token count: {original_gemini_tokens}")
+            except Exception as e:
+                logger.error(f"Failed to count original tokens: {e}")
+
+            # Run optimization with provider for real token counting
             optimized_msgs, opt_metrics = await context_manager.optimize_context(
                 messages,
                 max_context_tokens=request.max_context_tokens,
                 db=db,
+                provider=provider,
+                model=request.model,
             )
             messages = optimized_msgs
+
+            # Get REAL Gemini token count for optimized messages
+            try:
+                optimized_gemini_tokens = await provider.count_tokens(
+                    messages=messages,
+                    model=request.model,
+                )
+                logger.info(f"Optimized Gemini token count: {optimized_gemini_tokens}")
+
+                # Update metrics with real Gemini counts
+                if original_gemini_tokens is not None and optimized_gemini_tokens is not None:
+                    opt_metrics["original_tokens"] = original_gemini_tokens
+                    opt_metrics["optimized_tokens"] = optimized_gemini_tokens
+                    opt_metrics["tokens_saved"] = max(0, original_gemini_tokens - optimized_gemini_tokens)
+                    opt_metrics["compression_ratio"] = round(
+                        optimized_gemini_tokens / max(1, original_gemini_tokens), 4
+                    )
+            except Exception as e:
+                logger.error(f"Failed to count optimized tokens: {e}")
+
+        # Resolve any CCR references before sending to Gemini
+        # The gateway performs retrieval, not Gemini
+        messages = await _resolve_ccr_references(messages, db)
 
         llm_response = await provider.generate(
             messages=messages,
             model=request.model,
             temperature=request.temperature,
-            max_output_tokens=request.max_output_tokens,
             cached_content=request.cached_content,
         )
 
@@ -142,6 +230,7 @@ async def chat_completions(
             input_tokens=llm_response.input_tokens,
             output_tokens=llm_response.output_tokens,
             total_tokens=llm_response.total_tokens,
+            tokens_saved=opt_metrics.get("tokens_saved", 0) if opt_metrics else 0,
             latency_ms=latency_ms,
             status="success",
         )

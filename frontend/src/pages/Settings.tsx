@@ -154,8 +154,8 @@ export function Settings() {
               <span>Automatic rollback ensures compressed representation never exceeds original verbatim size.</span>
             </div>
             <div className="p-3 bg-card rounded border border-border">
-              <span className="font-semibold text-foreground font-sans block mb-1">Multi-Tier Caching</span>
-              <span>Combines in-memory RAM caching, SQLite CCR storage, and Gemini server-side context caching.</span>
+              <span className="font-semibold text-foreground font-sans block mb-1">Multi-Tier Architecture</span>
+              <span>In-memory cache for responses, SQLite CCR for context storage, and Gemini server-side caching available.</span>
             </div>
           </div>
         </CardContent>

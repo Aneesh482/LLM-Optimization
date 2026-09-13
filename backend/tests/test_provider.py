@@ -72,7 +72,6 @@ class TestGeminiProvider:
                 messages=[{"role": "user", "content": "Explain recursion."}],
                 model="gemini-3.6-flash",
                 temperature=0.7,
-                max_output_tokens=1000,
             )
 
             assert isinstance(result, LLMResponse)

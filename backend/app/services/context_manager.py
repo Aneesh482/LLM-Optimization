@@ -9,6 +9,7 @@ Features
 5. Older Context Summarization: Generates structured summaries of evicted older messages.
 6. CCR Archiving: Automatically archives older conversation segments into SQLite CCR storage
    and inserts a retrieval token [CCR:ctx_xxx].
+7. Real Gemini Token Counting: Uses official Gemini count_tokens API for accurate measurements.
 """
 
 from __future__ import annotations
@@ -45,8 +46,12 @@ class ContextManager:
         preserve_system: bool = True,
         archive_to_ccr: bool = True,
         db: Optional[AsyncSession] = None,
+        provider = None,
+        model: str = "gemini-3.6-flash",
     ) -> tuple[list[dict[str, str]], dict[str, Any]]:
         """Optimize conversation history to fit within target token budget.
+
+        Uses REAL Gemini token counting via the official count_tokens API.
 
         Parameters
         ----------
@@ -62,6 +67,10 @@ class ContextManager:
             Whether to archive older evicted turns into SQLite CCR storage.
         db : AsyncSession, optional
             Database session for CCR persistence.
+        provider : GeminiProvider, optional
+            Provider instance for real token counting.
+        model : str
+            Model name for token counting.
         """
         if not messages:
             return [], {
@@ -73,18 +82,44 @@ class ContextManager:
                 "optimized_message_count": 0,
                 "summary_injected": False,
                 "archived_context_id": None,
+                "strategy": "empty_input",
             }
 
         max_tokens = max_context_tokens or self.DEFAULT_MAX_CONTEXT_TOKENS
         recent_n = recent_count if recent_count is not None else self.DEFAULT_RECENT_COUNT
 
-        # Calculate initial token usage
-        total_original_tokens = sum(estimate_tokens(m.get("content", "")) for m in messages)
+        # Get REAL Gemini token count for original messages
+        if provider:
+            try:
+                total_original_tokens = await provider.count_tokens(
+                    messages=messages,
+                    model=model,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to get real Gemini token count, using heuristic: {e}")
+                total_original_tokens = sum(estimate_tokens(m.get("content", "")) for m in messages)
+        else:
+            # Fallback to heuristic if provider not available
+            total_original_tokens = sum(estimate_tokens(m.get("content", "")) for m in messages)
         original_msg_count = len(messages)
+        MIN_OPTIMIZATION_TOKENS = 1000
+
+        # Bypass optimization only if context is small AND already fits within budget
+        if total_original_tokens < MIN_OPTIMIZATION_TOKENS and total_original_tokens <= max_tokens:
+            return messages, {
+                "original_tokens": total_original_tokens,
+                "optimized_tokens": total_original_tokens,
+                "tokens_saved": 0,
+                "compression_ratio": 1.0,
+                "original_message_count": original_msg_count,
+                "optimized_message_count": original_msg_count,
+                "summary_injected": False,
+                "archived_context_id": None,
+                "strategy": "bypass_small_context",
+            }
 
         # 1. Content-level compression: optimize large payloads (JSON, Code, Logs) within individual messages
         compressed_turns: list[dict[str, str]] = []
-        payload_tokens_saved = 0
         for m in messages:
             content = m.get("content", "")
             if len(content) >= 150:
@@ -95,15 +130,26 @@ class ContextManager:
                         c_res = comp.compress(content)
                         if c_res.compression_ratio < 0.85:
                             compressed_turns.append({"role": m.get("role", "user"), "content": c_res.compressed_content})
-                            payload_tokens_saved += c_res.estimated_tokens_saved
                             continue
             compressed_turns.append(m)
 
         working_messages = compressed_turns
-        working_tokens = sum(estimate_tokens(m.get("content", "")) for m in working_messages)
 
-        # If within token budget and under recent window threshold, return optimized working messages
-        if working_tokens <= max_tokens and len(working_messages) <= (recent_n + (1 if preserve_system else 0)):
+        # Get REAL Gemini token count for working messages after compression
+        if provider:
+            try:
+                working_tokens = await provider.count_tokens(
+                    messages=working_messages,
+                    model=model,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to get real Gemini token count for working messages: {e}")
+                working_tokens = sum(estimate_tokens(m.get("content", "")) for m in working_messages)
+        else:
+            working_tokens = sum(estimate_tokens(m.get("content", "")) for m in working_messages)
+
+        # If within token budget, return optimized working messages
+        if working_tokens <= max_tokens:
             tokens_saved = max(0, total_original_tokens - working_tokens)
             ratio = round(working_tokens / max(1, total_original_tokens), 4)
             return working_messages, {
@@ -115,7 +161,7 @@ class ContextManager:
                 "optimized_message_count": len(working_messages),
                 "summary_injected": False,
                 "archived_context_id": None,
-                "strategy": "content_compression_within_budget" if payload_tokens_saved > 0 else "passthrough_within_budget",
+                "strategy": "content_compression_within_budget" if tokens_saved > 0 else "passthrough_within_budget",
             }
 
         # 2. Partition messages into System, Older Turns, and Recent Window
@@ -167,30 +213,38 @@ class ContextManager:
             )
             archived_ctx_id = ccr_record.context_id
 
-        # 4. Generate Structured Extractive Summary of Older Turns
+        # 5. Generate Structured Extractive Summary of Older Turns
         summary_text = self._build_conversation_summary(
             regular_older_turns,
             archived_context_id=archived_ctx_id,
         )
 
+        # Use system role for summary to avoid creating fake conversation history
         summary_message = {
-            "role": "user",
+            "role": "system",
             "content": f"[Context Manager - Prior History Summary]\n{summary_text}",
-        }
-        summary_ack = {
-            "role": "assistant",
-            "content": "Understood. I will maintain continuity with the summarized prior conversation history and reference points.",
         }
 
         # 5. Assemble Optimized Message Stream
         optimized_messages: list[dict[str, str]] = []
         optimized_messages.extend(system_messages)
         optimized_messages.append(summary_message)
-        optimized_messages.append(summary_ack)
         optimized_messages.extend(important_turns)
         optimized_messages.extend(recent_turns)
 
-        optimized_tokens = sum(estimate_tokens(m.get("content", "")) for m in optimized_messages)
+        # Get REAL Gemini token count for final optimized messages
+        if provider:
+            try:
+                optimized_tokens = await provider.count_tokens(
+                    messages=optimized_messages,
+                    model=model,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to get real Gemini token count for optimized messages: {e}")
+                optimized_tokens = sum(estimate_tokens(m.get("content", "")) for m in optimized_messages)
+        else:
+            optimized_tokens = sum(estimate_tokens(m.get("content", "")) for m in optimized_messages)
+
         tokens_saved = max(0, total_original_tokens - optimized_tokens)
         ratio = round(optimized_tokens / max(1, total_original_tokens), 4)
 
@@ -236,42 +290,32 @@ class ContextManager:
 
     @staticmethod
     def _build_conversation_summary(
-        turns: list[dict[str, str]],
-        archived_context_id: Optional[str] = None,
-    ) -> str:
-        """Create a compact, high-density structured summary of past turns."""
-        user_topics: list[str] = []
-        assistant_decisions: list[str] = []
+    turns: list[dict[str, str]],
+    archived_context_id: Optional[str] = None,
+) -> str:
+        """Create a compact summary of older conversation turns."""
+        lines: list[str] = []
 
         for idx, turn in enumerate(turns):
             role = turn.get("role", "unknown")
             text = turn.get("content", "").strip()
-            # Extract first sentence or key line
-            first_line = text.split("\n")[0][:120]
 
-            if role == "user":
-                user_topics.append(f"Turn {idx+1} [User]: {first_line}")
-            elif role == "assistant":
-                assistant_decisions.append(f"Turn {idx+1} [Assistant]: {first_line}")
+            if not text:
+                continue
 
-        summary_lines = [
-            f"The conversation previously covered {len(turns)} turns.",
-            "Key topics & user queries:",
-        ]
-        for t in user_topics[:4]:
-            summary_lines.append(f"  • {t}")
+            first_line = text.split("\n")[0].strip()
 
-        if assistant_decisions:
-            summary_lines.append("Key assistant points & conclusions:")
-            for d in assistant_decisions[:3]:
-                summary_lines.append(f"  • {d}")
+        # Keep only the first 100 characters of each older turn.
+            first_line = first_line[:100]
+
+            lines.append(f"{role}: {first_line}")
+
+        summary = "\n".join(lines[:6])
 
         if archived_context_id:
-            summary_lines.append(
-                f"Full verbatim history is archived in CCR storage under [CCR:{archived_context_id}] for on-demand retrieval."
-            )
+            summary += f"\n[CCR:{archived_context_id}]"
 
-        return "\n".join(summary_lines)
+        return summary
 
 
 # Singleton

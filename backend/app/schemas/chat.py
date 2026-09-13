@@ -25,7 +25,6 @@ class ChatRequest(BaseModel):
     model: str = Field(default="gemini-3.6-flash", description="Gemini model id")
     messages: list[Message] = Field(..., min_length=1, description="Conversation messages")
     temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
-    max_output_tokens: Optional[int] = Field(default=None, gt=0, le=65536)
     optimize_context: bool = Field(default=False, description="Enable automatic conversation context optimization")
     max_context_tokens: Optional[int] = Field(default=None, description="Optional token ceiling for context window")
     cached_content: Optional[str] = Field(default=None, description="Provider-side context cache resource name (e.g. cachedContents/12345)")
@@ -39,7 +38,6 @@ class ChatRequest(BaseModel):
                         {"role": "user", "content": "Explain recursion in Python."}
                     ],
                     "temperature": 0.7,
-                    "max_output_tokens": 1000,
                     "optimize_context": False,
                     "cached_content": None,
                 }

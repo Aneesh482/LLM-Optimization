@@ -54,11 +54,13 @@ export interface DashboardMetricsResponse {
   total_input_tokens: number;
   total_output_tokens: number;
   total_tokens: number;
-  total_tokens_saved: number;
+  estimated_prompt_tokens_saved: number;
+  ccr_compression_savings: number;
+  ccr_contexts_stored: number;
   avg_latency_ms: number;
   avg_compression_ratio: number;
   estimated_cost_usd: number;
-  estimated_cost_saved_usd: number;
+  estimated_prompt_cost_saved_usd: number;
   models_usage: ModelUsageMetric[];
   content_types_breakdown: ContentTypeMetric[];
   time_series: TimeSeriesDataPoint[];
@@ -168,7 +170,6 @@ export interface ChatCompletionRequest {
   model?: string;
   messages: ChatMessage[];
   temperature?: number;
-  max_output_tokens?: number;
   optimize_context?: boolean;
   max_context_tokens?: number;
   cached_content?: string;

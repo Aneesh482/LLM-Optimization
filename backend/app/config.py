@@ -28,5 +28,28 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
+# Model-specific pricing (USD per 1 million tokens)
+# Source: https://ai.google.dev/pricing (as of 2026)
+MODEL_PRICING = {
+    "gemini-3.6-flash": {
+        "input_per_million": 0.075,
+        "output_per_million": 0.30,
+    },
+    "gemini-2.5-flash": {
+        "input_per_million": 0.075,
+        "output_per_million": 0.30,
+    },
+    "gemini-2.5-pro": {
+        "input_per_million": 1.25,
+        "output_per_million": 5.00,
+    },
+    # Fallback for unknown models
+    "default": {
+        "input_per_million": 0.075,
+        "output_per_million": 0.30,
+    },
+}
+
+
 # Singleton — import this everywhere.
 settings = Settings()
