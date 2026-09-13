@@ -1,406 +1,84 @@
-Sure. Here is the **complete README.md as one single file**. Copy everything below into a file named `README.md`.
+<h1 align="center">Welcome to LLM Optimization Gateway 👋</h1>
+<p>
+  <img alt="Version" src="https://img.shields.io/badge/version-v1.0-blue.svg?cacheSeconds=2592000" />
+  <a href="https://github.com/Aneesh482/LLM-Optimization" target="_blank">
+    <img alt="Documentation" src="https://img.shields.io/badge/documentation-yes-brightgreen.svg" />
+  </a>
+</p>
 
-````markdown
-# LLM Optimization Gateway
+> A provider-agnostic gateway for optimizing LLM requests before they reach the model provider.The system analyzes incoming prompts and conversation context, applies context-aware compression, manages long conversations, stores recoverable context, and integrates with provider-side caching to reduce unnecessary input token usage while preserving important information.Modern LLM applications often send large amounts of repeated or unnecessary context with every request. This increases token consumption, latency, and cost.
 
-An intelligent middleware gateway that optimizes LLM requests before sending them to Google Gemini. The system analyzes incoming context, identifies the type of content, applies appropriate optimization strategies, and tracks token usage and performance.
+### 🏠 [Homepage](https://github.com/Aneesh482/LLM-Optimization)
 
-The main goal is to reduce unnecessary input and context tokens while preserving important information and maintaining response quality.
+## Author
 
-## Features
+👤 **Aneesh**
 
-- FastAPI-based LLM gateway
-- Google Gemini API integration
-- Provider abstraction for future LLM providers
-- Token usage analysis
-- Content-type detection and routing
-- Smart JSON compression
-- Code and log compression
-- Long conversation context management
-- Compress-Cache-Retrieve (CCR) architecture
-- Context storage using SQLite
-- Gemini context caching support
-- Request and performance monitoring
-- Token savings and compression metrics
-- React-based monitoring dashboard
-- Interactive LLM Playground
+* Github: [@Aneesh482](https://github.com/Aneesh482)
+* LinkedIn: [@Aneesh Dasgupta](https://linkedin.com/in/aneesh-dasgupta22)
 
-## Architecture
-
-```text
-User Application
-       |
-       v
-React Dashboard / API Client
-       |
-       v
-FastAPI Optimization Gateway
-       |
-       +----------------------+
-       |                      |
-       v                      v
-Token Analyzer          Content Router
-                              |
-             +----------------+----------------+
-             |                |                |
-             v                v                v
-          JSON             Code             Logs
-       Compressor        Compressor       Compressor
-             |
-             v
-    Compress-Cache-Retrieve
-             |
-             v
-      Context Storage
-          (SQLite)
-             |
-             v
-      Gemini Provider
-             |
-             v
-       Google Gemini API
-             |
-             v
-          Response
-````
-
-## Optimization Pipeline
-
-The gateway follows a content-aware optimization pipeline:
-
-```text
-Request
-   |
-   v
-Token Analysis
-   |
-   v
-Content Detection
-   |
-   v
-Content Routing
-   |
-   v
-Compression / Context Management
-   |
-   v
-CCR Storage and Retrieval
-   |
-   v
-Gemini API
-   |
-   v
-Response
-```
-
-The optimization focuses primarily on reducing unnecessary input and context tokens rather than artificially limiting the model's output.
-
-## Technology Stack
-
-### Frontend
-
-* React
-* Vite
-* TypeScript
-* Tailwind CSS
-* shadcn/ui
-* Recharts
-* React Router
-* Bun
-
-### Backend
-
-* Python
-* FastAPI
-* Pydantic
-* SQLite
-
-### LLM
-
-* Google Gemini API
-* Google GenAI Python SDK
-
-## Project Structure
-
-```text
-llm-optimization-gateway/
-│
-├── backend/
-│   ├── app/
-│   │   ├── providers/
-│   │   │   ├── base.py
-│   │   │   └── gemini.py
-│   │   ├── routes/
-│   │   ├── services/
-│   │   ├── models/
-│   │   ├── config.py
-│   │   └── main.py
-│   ├── tests/
-│   └── requirements.txt
-│
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   ├── services/
-│   │   └── App.tsx
-│   ├── package.json
-│   └── vite.config.ts
-│
-├── .env.example
-├── .gitignore
-└── README.md
-```
-
-## Getting Started
+## Installation
 
 ### Prerequisites
 
-Make sure the following are installed:
+- Python 3.10+
+- Bun
+- Git
+- Gemini API Key
 
-* Python 3.10 or higher
-* Bun
-* Git
-* Google Gemini API key
+### Clone the Repository
 
-## Backend Setup
+```bash
+git clone https://github.com/Aneesh482/LLM-Optimization.git
+cd LLM-Optimization
+````
 
-Navigate to the backend directory:
+### Backend Setup
 
 ```bash
 cd backend
-```
-
-Create a virtual environment:
-
-```bash
-python -m venv .venv
-```
-
-Activate the virtual environment on Windows:
-
-```powershell
-.venv\Scripts\activate
-```
-
-Install dependencies:
-
-```bash
+python -m venv venv
+venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in the backend directory:
+Create a `.env` file inside the `backend` directory:
 
 ```env
 GEMINI_API_KEY=your_gemini_api_key
 ```
 
-Start the FastAPI server:
+Start the backend:
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-The backend will be available at:
+### Frontend Setup
 
-```text
-http://localhost:8000
+Open a new terminal:
+
+```bash
+cd frontend
+bun install
+bun run dev
 ```
 
-API documentation:
+The frontend will start using Vite.
+
+### API Documentation
+
+Once the backend is running, open:
 
 ```text
 http://localhost:8000/docs
 ```
 
-## Frontend Setup
+### Show your support
 
-Open a new terminal and navigate to the frontend:
-
-```bash
-cd frontend
-```
-
-Install dependencies:
-
-```bash
-bun install
-```
-
-Start the development server:
-
-```bash
-bun run dev
-```
-
-The frontend will normally be available at:
-
-```text
-http://localhost:5173
-```
-
-## Environment Variables
-
-The backend requires a Google Gemini API key.
-
-Example `.env`:
-
-```env
-GEMINI_API_KEY=your_gemini_api_key
-```
-
-For GitHub, use `.env.example` instead:
-
-```env
-GEMINI_API_KEY=
-```
-
-## Core Components
-
-### Token Analyzer
-
-The Token Analyzer measures and tracks LLM request usage, including:
-
-* Input tokens
-* Output tokens
-* Total tokens
-* Number of messages
-* Context size
-* Token usage trends
-
-These measurements provide a baseline for evaluating optimization performance.
-
-### Content Router
-
-The Content Router identifies the type of incoming content and sends it to the appropriate optimization strategy.
-
-Supported content types include:
-
-* JSON
-* Code
-* Logs
-* Conversations
-* Tool results
-* API responses
-* General text
-
-### JSON Compressor
-
-The JSON Compressor reduces large JSON payloads while attempting to preserve important information such as:
-
-* Schema structure
-* Important records
-* Representative records
-* Anomalies
-* Record counts
-* Relevant fields
-
-The original content can be preserved for later retrieval.
-
-### Compress-Cache-Retrieve
-
-The CCR architecture follows three main stages:
-
-```text
-Compress
-   |
-   v
-Cache
-   |
-   v
-Retrieve
-```
-
-Instead of repeatedly sending large original content to the LLM, the gateway can send a smaller representation while maintaining access to the original information.
-
-### Context Management
-
-Long conversations can contain large amounts of repeated or outdated information.
-
-The Context Manager helps manage:
-
-* Recent messages
-* Important messages
-* Older conversation history
-* Summaries
-* Compressed context
-
-The objective is to maintain relevant context while reducing unnecessary input tokens.
-
-### Code and Log Compression
-
-The gateway supports specialized optimization strategies for code and logs.
-
-For code, important structures such as functions, classes, imports, and dependencies can be preserved.
-
-For logs, repeated patterns can be grouped while important errors, warnings, exceptions, timestamps, and anomalies can be retained.
-
-## Dashboard
-
-The React dashboard provides visibility into gateway performance and LLM usage.
-
-It includes:
-
-* Request statistics
-* Token usage
-* Token savings
-* Request latency
-* Estimated cost
-* Compression performance
-* Content-type distribution
-* Recent requests
-* Context storage information
-
-## Playground
-
-The Playground provides an interactive interface for sending prompts through the optimization gateway.
-
-The general flow is:
-
-```text
-User Prompt
-     |
-     v
-Optimization Gateway
-     |
-     v
-Token Analysis
-     |
-     v
-Content Optimization
-     |
-     v
-Google Gemini
-     |
-     v
-Response
-```
-
-The Playground can be used to compare the original request with the optimized request and observe token usage and performance.
-
-## Benchmarking
-
-The system can be evaluated by comparing baseline requests with optimized requests.
-
-Important metrics include:
-
-| Metric                | Description                                        |
-| --------------------- | -------------------------------------------------- |
-| Input Tokens          | Tokens sent to the LLM                             |
-| Output Tokens         | Tokens generated by the LLM                        |
-| Total Tokens          | Input plus output tokens                           |
-| Tokens Saved          | Reduction in input/context tokens                  |
-| Compression Ratio     | Original size compared with optimized size         |
-| Latency               | Time required to process the request               |
-| Estimated Cost        | Estimated LLM usage cost                           |
-| Information Retention | Important information preserved after optimization |
-
-Performance numbers should be based on actual benchmark results rather than assumed values.
+Give a ⭐️ if this project helped you!
 
 
 
-```powershell
-git add README.md
-git commit -m "Add project README"
-git push
-````
+
+
